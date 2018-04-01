@@ -22,6 +22,7 @@ import android.widget.EditText;
 import java.io.DataOutputStream;
 import java.io.IOException;
 import java.net.Socket;
+import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
@@ -158,11 +159,19 @@ public class MainActivity extends AppCompatActivity {
             s_ip = ip;
             port = p;
 
+
             Client connection = new Client(s_ip, port);
             connection.longitude = longitude;
             connection.latitude = latitude;
             connection.timestamp = timestamp;
             connection.devicename = devicename;
+
+//            try {
+//                Location location = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+//                connection.latitude = location.getLatitude();
+//                connection.longitude = location.getLongitude();
+//            } catch (SecurityException e) {}
+
             connection.start();
         }
 
@@ -204,7 +213,7 @@ public class MainActivity extends AppCompatActivity {
         String ipAddress;
         int port;
         public long timestamp;
-        private String message;
+        private byte[] message;
         public double latitude;
         public double longitude;
         public String devicename;
@@ -234,10 +243,10 @@ public class MainActivity extends AppCompatActivity {
             }
         }
 
-        public boolean sendData(String data) {
+        public boolean sendData(byte[] data) {
             if (outStream != null) {
                 try {
-                    outStream.writeUTF(data);
+                    outStream.write(data);
                 } catch (IOException e) {
                     Log.w("error", e.toString());
                     return false;
@@ -252,11 +261,26 @@ public class MainActivity extends AppCompatActivity {
                 Log.w("Roger", "Reconnect to server");
             }
 
-            message = deviceID + " " + timestamp + " " + latitude + " " + longitude + " " + devicename;
-            if (sClient != null && outStream != null && message != null) {
-                sendData(message);
-                Log.w("Roger", "Client sending" + message.toString());
-                message = null;
+            //message = deviceID + " " + timestamp + " " + "1.123445" + " " + "12343456";
+
+            ByteBuffer sendBuffer = ByteBuffer.allocate(59);
+
+            final byte delimiter = ' ';
+
+            sendBuffer.put(deviceID.getBytes());
+            sendBuffer.put(delimiter);
+            sendBuffer.putLong(timestamp);
+            sendBuffer.put(delimiter);
+            sendBuffer.putDouble(latitude);
+            sendBuffer.put(delimiter);
+            sendBuffer.putDouble(longitude);
+
+            byte[] sendBuf = sendBuffer.array();
+
+            if (sClient != null && outStream != null && sendBuf != null) {
+                sendData(sendBuf);
+                //Log.w("Roger", "Client sending" + new String(sendBuf));
+                //message = null;
                 try {
                     sClient.close();
                 } catch (IOException e) {

@@ -2,8 +2,9 @@
 <project version="4">
   <component name="ProjectModuleManager">
     <modules>
-      <module fileurl="file://$PROJECT_DIR$/GPSTracker.iml" filepath="$PROJECT_DIR$/GPSTracker.iml" />
+      <module fileurl="file://C:\Users\benny\source\repos\final-projects\gps-tracker\GPSTracker.iml" filepath="C:\Users\benny\source\repos\final-projects\gps-tracker\GPSTracker.iml" />
       <module fileurl="file://$PROJECT_DIR$/app/app.iml" filepath="$PROJECT_DIR$/app/app.iml" />
+      <module fileurl="file://$PROJECT_DIR$/gps-tracker.iml" filepath="$PROJECT_DIR$/gps-tracker.iml" />
     </modules>
   </component>
 </project>

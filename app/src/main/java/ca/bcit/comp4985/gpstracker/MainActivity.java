@@ -3,6 +3,7 @@ package ca.bcit.comp4985.gpstracker;
 import android.Manifest;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
+import android.os.AsyncTask;
 import android.provider.Settings;
 import android.support.v4.app.ActivityCompat;
 import android.support.v4.content.ContextCompat;
@@ -18,6 +19,7 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.Toast;
 
 import java.io.DataOutputStream;
 import java.io.IOException;
@@ -25,6 +27,7 @@ import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
+import java.util.Arrays;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -54,7 +57,7 @@ public class MainActivity extends AppCompatActivity {
         ConnectBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Log.w("Roger", "Start connection" + deviceID);
+                Log.w("Roger", "Start connection " + deviceID);
                 Connect(lm, devicename);
             }
         });
@@ -103,11 +106,6 @@ public class MainActivity extends AppCompatActivity {
         Log.w("Roger", "myipaddress is: " + ip);
         return ip;
     }
-//    public String getWifiAddress() {
-//        WifiManager wm = (WifiManager) getApplicationContext().getSystemService(Context.WIFI_SERVICE);
-//        String ip = Formatter.formatIpAddress(wm.getConnectionInfo().getIpAddress());
-//        return ip;
-//    }
 
     private String intToIp(int ip) {
         return String.format("%d.%d.%d.%d", (ip & 0xff), (ip >> 8 & 0xff), (ip >> 16 & 0xff), (ip >> 24 & 0xff));
@@ -117,7 +115,7 @@ public class MainActivity extends AppCompatActivity {
 
         sIP = IPEditText.getText().toString();
         sPort = PortEditText.getText().toString();
-        Log.w("Roger", sIP + "-" + port);
+        Log.w("Roger", sIP + ":" + port);
         if (sIP != null && sIP.length() > 0 && sPort != null && sPort.length() > 0) {
             //port = iport;
             //port = 7000;
@@ -137,7 +135,8 @@ public class MainActivity extends AppCompatActivity {
                 Log.w("Roger", "Permission granted!");
             }
             final mLocationListener ll = new mLocationListener(lm, devicename, sIP, port);
-            lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER, 1000, 0, ll);
+            lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,  0, 0, ll);
+            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER,  0, 0, ll);
         }
     }
 
@@ -148,6 +147,7 @@ public class MainActivity extends AppCompatActivity {
         public String devicename;
         public String s_ip;
         public int port;
+        public Client connection;
         LocationManager lm = null;
 
         public mLocationListener(LocationManager manager, String dn, String ip, int p) {
@@ -159,36 +159,37 @@ public class MainActivity extends AppCompatActivity {
             s_ip = ip;
             port = p;
 
-
-            Client connection = new Client(s_ip, port);
+            connection = new Client(s_ip, port);
             connection.longitude = longitude;
             connection.latitude = latitude;
             connection.timestamp = timestamp;
             connection.devicename = devicename;
 
-//            try {
-//                Location location = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-//                connection.latitude = location.getLatitude();
-//                connection.longitude = location.getLongitude();
-//            } catch (SecurityException e) {}
+            try {
+                Location location = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
+                connection.latitude = location.getLatitude();
+                connection.longitude = location.getLongitude();
+            } catch (SecurityException e) {
+                Log.d("benny", "Security exception " + e.getMessage());
+            }
 
-            connection.start();
+            Log.d("benny", "location listener created");
         }
 
         @Override
         public void onLocationChanged(Location location) {
+            Toast.makeText(MainActivity.this, "location data sent to server", Toast.LENGTH_LONG).show();
+
             latitude = location.getLatitude();
             longitude = location.getLongitude();
             timestamp = location.getTime();
 
-            Client connection = new Client(s_ip, port);
             connection.longitude = longitude;
             connection.latitude = latitude;
             connection.timestamp = timestamp;
             connection.devicename = devicename;
-            connection.start();
 
-            lm.removeUpdates(this);
+            new SendLocationTask().execute(connection);
         }
 
         //unused
@@ -207,13 +208,12 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    class Client extends Thread {
+    class Client {
         Socket sClient;
         DataOutputStream outStream;
         String ipAddress;
         int port;
         public long timestamp;
-        private byte[] message;
         public double latitude;
         public double longitude;
         public String devicename;
@@ -221,7 +221,6 @@ public class MainActivity extends AppCompatActivity {
         public Client(String s_ip, int p) {
             ipAddress = s_ip;
             port = p;
-            message = null;
             sClient = null;
             outStream = null;
         }
@@ -231,9 +230,10 @@ public class MainActivity extends AppCompatActivity {
                 if (ipAddress != null && port != -1) {
                     try {
                         sClient = new Socket(ipAddress, port);
-                    } catch (NetworkOnMainThreadException e) {
-
+                    } catch (Exception e) {
+                        e.printStackTrace();
                     }
+
                     if (sClient != null) {
                         outStream = new DataOutputStream(sClient.getOutputStream());
                     }
@@ -246,7 +246,8 @@ public class MainActivity extends AppCompatActivity {
         public boolean sendData(byte[] data) {
             if (outStream != null) {
                 try {
-                    outStream.write(data);
+                    outStream.write(data, 0, data.length);
+                    Log.w("benny", Arrays.toString(data));
                 } catch (IOException e) {
                     Log.w("error", e.toString());
                     return false;
@@ -255,13 +256,11 @@ public class MainActivity extends AppCompatActivity {
             return true;
         }
 
-        public void run() {
+        public void sendLocation() {
             if (sClient == null) {
                 connectToServer();
                 Log.w("Roger", "Reconnect to server");
             }
-
-            //message = deviceID + " " + timestamp + " " + "1.123445" + " " + "12343456";
 
             ByteBuffer sendBuffer = ByteBuffer.allocate(59);
 
@@ -277,20 +276,25 @@ public class MainActivity extends AppCompatActivity {
 
             byte[] sendBuf = sendBuffer.array();
 
-            if (sClient != null && outStream != null && sendBuf != null) {
+            if (sClient != null && outStream != null) {
                 sendData(sendBuf);
-                //Log.w("Roger", "Client sending" + new String(sendBuf));
-                //message = null;
-                try {
-                    sClient.close();
-                } catch (IOException e) {
-                }
             }
         }
 
         public boolean isConnected() {
             return !sClient.isClosed();
         }
+    }
 
+    private class SendLocationTask extends AsyncTask<Client, Void, Void> {
+
+        @Override
+        protected Void doInBackground(Client... clients) {
+            Client connection = clients[0];
+
+            connection.sendLocation();
+
+            return null;
+        }
     }
 }

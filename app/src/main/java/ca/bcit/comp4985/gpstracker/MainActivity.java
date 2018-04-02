@@ -14,7 +14,6 @@ import android.content.pm.PackageManager;
 import android.location.Location;
 import android.location.LocationListener;
 import android.location.LocationManager;
-import android.os.NetworkOnMainThreadException;
 import android.util.Log;
 import android.view.View;
 import android.widget.Button;
@@ -27,7 +26,6 @@ import java.net.Socket;
 import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
-import java.util.Arrays;
 
 public class MainActivity extends AppCompatActivity {
 
@@ -37,6 +35,9 @@ public class MainActivity extends AppCompatActivity {
     EditText IPEditText;
     EditText PortEditText;
     String deviceID;
+
+    public static final float DISTANCE_RESOLUTION = 2.0f;
+    public static final int TIME_RESOLUTION = 3 * 1000;
 
     @Override
     protected void onCreate(Bundle savedInstanceState) {
@@ -49,8 +50,8 @@ public class MainActivity extends AppCompatActivity {
 
         final LocationManager lm = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
         final String devicename = (android.os.Build.MANUFACTURER + "-" + android.os.Build.MODEL).replace(' ', '-');
-        deviceID = Settings.Secure.getString(this.getContentResolver(), Settings.Secure.ANDROID_ID);
-        deviceID = md5(deviceID);
+        deviceID = md5(Settings.Secure.getString(this.getContentResolver(), Settings.Secure.ANDROID_ID));
+
         // May be useful if server require client ip address
         final String deviceip = getWifiAddress();
 
@@ -135,8 +136,8 @@ public class MainActivity extends AppCompatActivity {
                 Log.w("Roger", "Permission granted!");
             }
             final mLocationListener ll = new mLocationListener(lm, devicename, sIP, port);
-            lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,  0, 0, ll);
-            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER,  0, 0, ll);
+            lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,  TIME_RESOLUTION, DISTANCE_RESOLUTION, ll);
+            lm.requestLocationUpdates(LocationManager.GPS_PROVIDER,  TIME_RESOLUTION, DISTANCE_RESOLUTION, ll);
         }
     }
 
@@ -164,21 +165,11 @@ public class MainActivity extends AppCompatActivity {
             connection.latitude = latitude;
             connection.timestamp = timestamp;
             connection.devicename = devicename;
-
-            try {
-                Location location = lm.getLastKnownLocation(LocationManager.NETWORK_PROVIDER);
-                connection.latitude = location.getLatitude();
-                connection.longitude = location.getLongitude();
-            } catch (SecurityException e) {
-                Log.d("benny", "Security exception " + e.getMessage());
-            }
-
-            Log.d("benny", "location listener created");
         }
 
         @Override
         public void onLocationChanged(Location location) {
-            Toast.makeText(MainActivity.this, "location data sent to server", Toast.LENGTH_LONG).show();
+            Toast.makeText(MainActivity.this, timestamp + " data sent", Toast.LENGTH_SHORT).show();
 
             latitude = location.getLatitude();
             longitude = location.getLongitude();
@@ -247,7 +238,6 @@ public class MainActivity extends AppCompatActivity {
             if (outStream != null) {
                 try {
                     outStream.write(data, 0, data.length);
-                    Log.w("benny", Arrays.toString(data));
                 } catch (IOException e) {
                     Log.w("error", e.toString());
                     return false;

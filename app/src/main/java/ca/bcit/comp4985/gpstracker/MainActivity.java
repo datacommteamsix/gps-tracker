@@ -1,6 +1,7 @@
 package ca.bcit.comp4985.gpstracker;
 
 import android.Manifest;
+import android.annotation.SuppressLint;
 import android.net.wifi.WifiInfo;
 import android.net.wifi.WifiManager;
 import android.os.AsyncTask;
@@ -18,53 +19,52 @@ import android.util.Log;
 import android.view.View;
 import android.widget.Button;
 import android.widget.EditText;
+import android.widget.TextView;
 import android.widget.Toast;
 
-import java.io.DataOutputStream;
-import java.io.IOException;
-import java.net.Socket;
-import java.nio.ByteBuffer;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 
 public class MainActivity extends AppCompatActivity {
 
-    String sIP;
-    String sPort;
-    int port;
-    EditText IPEditText;
-    EditText PortEditText;
-    String deviceID;
+    String deviceId;
+    String serverIp;
+    String serverPort;
+    EditText ipEditText;
+    EditText portEditText;
+    TextView statusLabel;
 
     public static final float DISTANCE_RESOLUTION = 2.0f;
     public static final int TIME_RESOLUTION = 3 * 1000;
 
+    @SuppressLint("HardwareIds")
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
         setContentView(R.layout.activity_main);
         initLocationServices();
+
         final Button ConnectBtn = (Button) findViewById(R.id.buttonConnect);
-        IPEditText = (EditText) findViewById(R.id.IPEdit);
-        PortEditText = (EditText) findViewById(R.id.portEdit);
+        ipEditText = (EditText) findViewById(R.id.IPEdit);
+        portEditText = (EditText) findViewById(R.id.portEdit);
+        statusLabel = (TextView) findViewById(R.id.statusLabel);
 
         final LocationManager lm = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
-        final String devicename = (android.os.Build.MANUFACTURER + "-" + android.os.Build.MODEL).replace(' ', '-');
-        deviceID = md5(Settings.Secure.getString(this.getContentResolver(), Settings.Secure.ANDROID_ID));
+        deviceId = hashToMD5(Settings.Secure.getString(this.getContentResolver(), Settings.Secure.ANDROID_ID));
 
         // May be useful if server require client ip address
-        final String deviceip = getWifiAddress();
+        // final String deviceip = getWifiAddress();
 
         ConnectBtn.setOnClickListener(new View.OnClickListener() {
             @Override
             public void onClick(View v) {
-                Log.w("Roger", "Start connection " + deviceID);
-                Connect(lm, devicename);
+                Log.w("Roger", "Start connection " + deviceId);
+                Connect(lm);
             }
         });
     }
 
-    public String md5(String s) {
+    public String hashToMD5(String s) {
         try {
             // Create MD5 Hash
             MessageDigest digest = java.security.MessageDigest.getInstance("MD5");
@@ -84,7 +84,6 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void initLocationServices() {
-
         // check if permissions are granted
         if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
                 ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
@@ -109,24 +108,22 @@ public class MainActivity extends AppCompatActivity {
     }
 
     private String intToIp(int ip) {
-        return String.format("%d.%d.%d.%d", (ip & 0xff), (ip >> 8 & 0xff), (ip >> 16 & 0xff), (ip >> 24 & 0xff));
+        return String.format("%d.%d.%d.%d".toLowerCase(), (ip & 0xff), (ip >> 8 & 0xff), (ip >> 16 & 0xff), (ip >> 24 & 0xff));
     }
 
-    public void Connect(LocationManager lm, String devicename) {
+    public void Connect(LocationManager lm) {
+        int port = -1;
 
-        sIP = IPEditText.getText().toString();
-        sPort = PortEditText.getText().toString();
-        Log.w("Roger", sIP + ":" + port);
-        if (sIP != null && sIP.length() > 0 && sPort != null && sPort.length() > 0) {
-            //port = iport;
-            //port = 7000;
-            //sIP = "10.0.2.1";
-            //sIP = "142.232.122.3";
-            port = Integer.parseInt(sPort);
-            Log.w("Roger", sIP + " " + port);
+        serverIp = ipEditText.getText().toString();
+        serverPort = portEditText.getText().toString();
+        Log.w("Roger", serverIp + ":" + port);
+
+        if (serverIp != null && serverIp.length() > 0 && serverPort != null && serverPort.length() > 0) {
+            port = Integer.parseInt(serverPort);
+            Log.w("Roger", serverIp + " " + port);
+
             if (ContextCompat.checkSelfPermission(this, android.Manifest.permission.ACCESS_COARSE_LOCATION) != PackageManager.PERMISSION_GRANTED ||
                     ContextCompat.checkSelfPermission(this, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-
                 // if not, ask for permission
                 ActivityCompat.requestPermissions(
                         this,
@@ -135,57 +132,44 @@ public class MainActivity extends AppCompatActivity {
                 );
                 Log.w("Roger", "Permission granted!");
             }
-            final mLocationListener ll = new mLocationListener(lm, devicename, sIP, port);
+
+            final mLocationListener ll = new mLocationListener(lm, serverIp, port);
             lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,  TIME_RESOLUTION, DISTANCE_RESOLUTION, ll);
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER,  TIME_RESOLUTION, DISTANCE_RESOLUTION, ll);
         }
     }
 
     public class mLocationListener implements LocationListener {
-        public long timestamp;
-        public double latitude;
-        public double longitude;
-        public String devicename;
-        public String s_ip;
-        public int port;
-        public Client connection;
+        String serverIp;
+        int serverPort;
+        Client connection;
         LocationManager lm = null;
 
-        public mLocationListener(LocationManager manager, String dn, String ip, int p) {
+        mLocationListener(LocationManager manager, String ip, int p) {
             lm = manager;
-            timestamp = System.currentTimeMillis() / 1000;
-            latitude = -1;
-            longitude = -1;
-            devicename = dn;
-            s_ip = ip;
-            port = p;
+            serverIp = ip;
+            serverPort = p;
 
-            connection = new Client(s_ip, port);
-            connection.longitude = longitude;
-            connection.latitude = latitude;
-            connection.timestamp = timestamp;
-            connection.devicename = devicename;
+            connection = new Client(deviceId, serverIp, serverPort);
         }
 
         @Override
         public void onLocationChanged(Location location) {
-            Toast.makeText(MainActivity.this, timestamp + " data sent", Toast.LENGTH_SHORT).show();
-
-            latitude = location.getLatitude();
-            longitude = location.getLongitude();
-            timestamp = location.getTime();
-
-            connection.longitude = longitude;
-            connection.latitude = latitude;
-            connection.timestamp = timestamp;
-            connection.devicename = devicename;
-
-            new SendLocationTask().execute(connection);
+            if (connection.isConnected())
+            {
+                connection.setLocation(location);
+                new SendLocationTask().execute(connection);
+            }
+            else
+            {
+                Toast.makeText(MainActivity.this, "Not connected - Location not sent", Toast.LENGTH_SHORT).show();
+            }
         }
 
-        //unused
+        @SuppressLint("SetTextI18n")
         @Override
         public void onProviderDisabled(String provider) {
+            statusLabel.setText("Location Provider Disconnected");
         }
 
         //unused
@@ -199,90 +183,14 @@ public class MainActivity extends AppCompatActivity {
         }
     }
 
-    class Client {
-        Socket sClient;
-        DataOutputStream outStream;
-        String ipAddress;
-        int port;
-        public long timestamp;
-        public double latitude;
-        public double longitude;
-        public String devicename;
-
-        public Client(String s_ip, int p) {
-            ipAddress = s_ip;
-            port = p;
-            sClient = null;
-            outStream = null;
-        }
-
-        public void connectToServer() {
-            try {
-                if (ipAddress != null && port != -1) {
-                    try {
-                        sClient = new Socket(ipAddress, port);
-                    } catch (Exception e) {
-                        e.printStackTrace();
-                    }
-
-                    if (sClient != null) {
-                        outStream = new DataOutputStream(sClient.getOutputStream());
-                    }
-                }
-            } catch (Exception e) {
-                Log.w("error", e.toString());
-            }
-        }
-
-        public boolean sendData(byte[] data) {
-            if (outStream != null) {
-                try {
-                    outStream.write(data, 0, data.length);
-                } catch (IOException e) {
-                    Log.w("error", e.toString());
-                    return false;
-                }
-            }
-            return true;
-        }
-
-        public void sendLocation() {
-            if (sClient == null) {
-                connectToServer();
-                Log.w("Roger", "Reconnect to server");
-            }
-
-            ByteBuffer sendBuffer = ByteBuffer.allocate(59);
-
-            final byte delimiter = ' ';
-
-            sendBuffer.put(deviceID.getBytes());
-            sendBuffer.put(delimiter);
-            sendBuffer.putLong(timestamp);
-            sendBuffer.put(delimiter);
-            sendBuffer.putDouble(latitude);
-            sendBuffer.put(delimiter);
-            sendBuffer.putDouble(longitude);
-
-            byte[] sendBuf = sendBuffer.array();
-
-            if (sClient != null && outStream != null) {
-                sendData(sendBuf);
-            }
-        }
-
-        public boolean isConnected() {
-            return !sClient.isClosed();
-        }
-    }
-
-    private class SendLocationTask extends AsyncTask<Client, Void, Void> {
-
+    private static class SendLocationTask extends AsyncTask<Client, Void, Void> {
         @Override
         protected Void doInBackground(Client... clients) {
-            Client connection = clients[0];
 
-            connection.sendLocation();
+            for (Client client : clients)
+            {
+                client.sendLocation();
+            }
 
             return null;
         }

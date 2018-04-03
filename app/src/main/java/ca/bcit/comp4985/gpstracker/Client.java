@@ -19,7 +19,6 @@ class Client {
     private double lng;
     private long timestamp;
 
-
     Client(String deviceId, String ipAddress, int port) {
         this.deviceId = deviceId;
         this.ipAddress = ipAddress;
@@ -94,6 +93,6 @@ class Client {
     }
 
     boolean isConnected() {
-        return !socket.isClosed();
+        return this.socket != null && !socket.isClosed();
     }
 }

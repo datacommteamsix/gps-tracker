@@ -37,7 +37,7 @@ public class MainActivity extends AppCompatActivity {
     public static final float DISTANCE_RESOLUTION = 2.0f;
     public static final int TIME_RESOLUTION = 3 * 1000;
 
-    @SuppressLint("HardwareIds")
+    @SuppressLint({"HardwareIds", "SetTextI18n"})
     @Override
     protected void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -48,6 +48,7 @@ public class MainActivity extends AppCompatActivity {
         ipEditText = (EditText) findViewById(R.id.IPEdit);
         portEditText = (EditText) findViewById(R.id.portEdit);
         statusLabel = (TextView) findViewById(R.id.statusLabel);
+        statusLabel.setText(getResources().getString(R.string.status) + " Server Disconnected");
 
         final LocationManager lm = (LocationManager) this.getSystemService(Context.LOCATION_SERVICE);
         deviceId = hashToMD5(Settings.Secure.getString(this.getContentResolver(), Settings.Secure.ANDROID_ID));
@@ -112,11 +113,11 @@ public class MainActivity extends AppCompatActivity {
     }
 
     public void Connect(LocationManager lm) {
-        int port = -1;
+        int port;
 
         serverIp = ipEditText.getText().toString();
         serverPort = portEditText.getText().toString();
-        Log.w("Roger", serverIp + ":" + port);
+        Log.w("Roger", serverIp + ":" + serverPort);
 
         if (serverIp != null && serverIp.length() > 0 && serverPort != null && serverPort.length() > 0) {
             port = Integer.parseInt(serverPort);
@@ -133,43 +134,44 @@ public class MainActivity extends AppCompatActivity {
                 Log.w("Roger", "Permission granted!");
             }
 
-            final mLocationListener ll = new mLocationListener(lm, serverIp, port);
-            lm.requestLocationUpdates(LocationManager.NETWORK_PROVIDER,  TIME_RESOLUTION, DISTANCE_RESOLUTION, ll);
+            Client connection = new Client(deviceId, serverIp, port);
+
+            final mLocationListener ll = new mLocationListener(lm, connection);
             lm.requestLocationUpdates(LocationManager.GPS_PROVIDER,  TIME_RESOLUTION, DISTANCE_RESOLUTION, ll);
+
+            ll.onLocationChanged(lm.getLastKnownLocation(LocationManager.GPS_PROVIDER));
         }
     }
 
     public class mLocationListener implements LocationListener {
-        String serverIp;
-        int serverPort;
         Client connection;
         LocationManager lm = null;
 
-        mLocationListener(LocationManager manager, String ip, int p) {
+        mLocationListener(LocationManager manager, Client client) {
             lm = manager;
-            serverIp = ip;
-            serverPort = p;
-
-            connection = new Client(deviceId, serverIp, serverPort);
+            connection = client;
         }
 
+        @SuppressLint("SetTextI18n")
         @Override
         public void onLocationChanged(Location location) {
             if (connection.isConnected())
             {
                 connection.setLocation(location);
                 new SendLocationTask().execute(connection);
+                statusLabel.setText(getResources().getString(R.string.status) + " Server Connected");
             }
             else
             {
                 Toast.makeText(MainActivity.this, "Not connected - Location not sent", Toast.LENGTH_SHORT).show();
+                statusLabel.setText(getResources().getString(R.string.status) + " Server Disconnected");
             }
         }
 
         @SuppressLint("SetTextI18n")
         @Override
         public void onProviderDisabled(String provider) {
-            statusLabel.setText("Location Provider Disconnected");
+            statusLabel.setText(getResources().getString(R.string.status) + "Location Provider Disconnected");
         }
 
         //unused

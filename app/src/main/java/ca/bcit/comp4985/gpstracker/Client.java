@@ -27,6 +27,7 @@
 package ca.bcit.comp4985.gpstracker;
 
 import android.location.Location;
+import android.os.AsyncTask;
 import android.util.Log;
 
 import java.io.DataOutputStream;
@@ -69,6 +70,7 @@ class Client {
         this.port = port;
         this.socket = null;
         this.outStream = null;
+        new ConnectToServerTask().execute(this);
     }
 
     /*------------------------------------------------------------------------------
@@ -229,5 +231,33 @@ class Client {
     ------------------------------------------------------------------------------*/
     boolean isConnected() {
         return this.socket != null && !socket.isClosed();
+    }
+
+    /*------------------------------------------------------------------------------
+    -- FUNCTION:    ConnectToServerTask
+    --
+    -- DATE:        April 5th, 2018
+    --
+    -- REVISIONS:
+    --
+    -- DESIGNER:    Benny Wang
+    --
+    -- PROGRAMMER:  Benny Wang
+    --
+    -- INTERFACE:   ConnectToServerTask()
+    --
+    -- RETURNS: void
+    --
+    -- NOTES: AsyncTask that connects the client to the server.
+    ------------------------------------------------------------------------------*/
+    private class ConnectToServerTask extends AsyncTask<Client, Void, Void> {
+        @Override
+        protected Void doInBackground(Client... clients) {
+            for (Client c : clients)
+            {
+                c.connectToServer();
+            }
+            return null;
+        }
     }
 }
